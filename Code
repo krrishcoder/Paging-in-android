@@ -1,0 +1,150 @@
+
+step 1-->
+
+         create a class that will be extend from PagingSource< a, b >() 
+         also you will need of api object to get the data, 
+         here b is the type of some List<b> of the response that you get after network call
+         
+         override two methods for Paging source that is load, get refresh key
+         
+         return LoadResult.Page(
+            data =,
+            prevKey=,
+            nextKey=
+            )
+            
+            in refresh define the logic for what to do on refresh
+       
+
+step 2-------> create a adapter class
+        
+        extend PagingDataAdapter<b, .MyViewAdapter>(compartor)
+        
+        
+        here comparator will be callback object of diffutil which will be used when list is updated.
+        
+        it is very much similiar to recycler adapter
+        except getItemsCount ,,which is not included rest is same
+        
+        
+ step 3 --> update repo class
+ 
+ here define the livedata by setting up the Pager()
+ pass the required arguments
+ 
+  fun getImages() = Pager(
+        config = PagingConfig(pageSize = 20, maxSize = 100),
+         pagingSourceFactory = {ImagePagingSource(apiImageService)}
+     ).liveData
+ 
+     
+        
+        
+        ////////////////////////in repo////////////////////////////////////
+         fun getImages() = Pager(
+        config = PagingConfig(pageSize = 20, maxSize = 100),
+         pagingSourceFactory = {ImagePagingSource(apiImageService)}
+     ).liveData
+
+        
+
+
+class ImagePagingSource(val image_api :api_image_service) : PagingSource<Int, Photo>() {
+    override fun getRefreshKey(state: PagingState<Int, Photo>): Int? {
+    if(state.anchorPosition !=null){
+        val anchorPage = state.closestPageToPosition(state.anchorPosition!!)
+        if(anchorPage?.prevKey != null){
+            return anchorPage.prevKey!!.plus(1)
+        }
+        else if(anchorPage?.nextKey !=null){
+            return anchorPage.nextKey!!.minus(1)
+        }
+        }
+            return null
+    }
+
+    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Photo> {
+        try{
+
+            val position = params.key ?: 1
+            val response = image_api.getCuratedImages(20,position).body()
+
+            val responseData = mutableListOf<Photo>()
+            responseData.addAll(response!!.photos)
+            return LoadResult.Page(
+                data =responseData,
+                prevKey = if(position==1) null else position-1,
+                nextKey = position.plus(1)
+            )
+
+        }catch (e:java.lang.Exception){
+
+            return LoadResult.Error(e)
+        }
+    }
+}
+
+
+
+
+
+
+=====================================
+
+class ImagePagingAdapter(var mContext:Context) : PagingDataAdapter<Photo,ImagePagingAdapter.MyViewHolder>(COMPARATOR){
+    var pre = 0
+    inner class MyViewHolder(val binding: ItemInHomeBinding) : RecyclerView.ViewHolder(binding.root){
+
+    }
+
+    override fun onBindViewHolder(holder: MyViewHolder, position: Int) {
+
+        val item = getItem(position)
+
+        if(position <=1){
+            holder.binding.root.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                this.setMargins(this.leftMargin,200,this.rightMargin,this.leftMargin)
+            }
+        }else{
+            holder.binding.root.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                this.setMargins(this.leftMargin,50,this.rightMargin,this.leftMargin)
+            }
+        }
+
+        if(pre>position){
+            holder.binding.root.startAnimation(AnimationUtils.loadAnimation(mContext, R.anim.slide_in_right))
+        }else{
+            holder.binding.root.startAnimation(AnimationUtils.loadAnimation(mContext, R.anim.zoom_in))
+        }
+
+        var ro = RequestOptions().placeholder(R.drawable.ic_launcher_background)
+        ro.optionalFitCenter()
+
+        Glide.with(mContext).load(item?.src?.medium)
+            .apply(ro)
+            .override(300,300)
+            .into(holder.binding.itemIv)
+
+        pre =position
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MyViewHolder {
+        return MyViewHolder(ItemInHomeBinding.inflate(LayoutInflater.from(parent.context),parent,false))
+    }
+
+    companion object{
+        private val COMPARATOR = object :DiffUtil.ItemCallback<Photo>(){
+            override fun areItemsTheSame(oldItem: Photo, newItem: Photo): Boolean {
+                return oldItem.id == newItem.id
+            }
+
+            override fun areContentsTheSame(oldItem: Photo, newItem: Photo): Boolean {
+                return oldItem == newItem
+            }
+
+        }
+    }
+
+
+
+}
